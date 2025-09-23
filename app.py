@@ -37,7 +37,7 @@ def group_mask(series: pd.Series, group: str) -> pd.Series:
     if group == "Full Backs":   return s.str.startswith(('LB','LWB','RB','RWB'))
     if group == "Midfielders":  return s.str.startswith(('LCMF','RCMF','LDMF','RDMF','DMF'))
     if group == "Attackers":    return attackers_mask(series)
-    if group == "Forwards":     return s.str.startswith(('CF',))
+    if group == "Strikers":     return s.str.startswith(('CF',))
     return pd.Series([True]*len(series), index=series.index)
 
 # ---------------------------
@@ -55,29 +55,69 @@ st.markdown('</div>', unsafe_allow_html=True)
 # FEATURE PRESETS PER MODE
 # ---------------------------
 CB_FEATURES = [
-    "Aerial duels per 90","Aerial duels won, %","Defensive duels per 90","Defensive duels won, %",
-    "PAdj Interceptions","Passes per 90","Accurate passes, %","Progressive passes per 90",
-    "Forward passes per 90","Progressive runs per 90","Dribbles per 90"
+       'Successful defensive actions per 90',
+       'Defensive duels per 90', 'Defensive duels won, %',
+       'Aerial duels per 90', 'Aerial duels won, %', 'Shots blocked per 90',
+       'PAdj Interceptions', 'Dribbles per 90',
+       'Successful dribbles, %', 
+       'Progressive runs per 90', 'Accelerations per 90', 'Passes per 90',
+       'Accurate passes, %', 'Forward passes per 90',
+       'Accurate forward passes, %', 'Long passes per 90',
+       'Accurate long passes, %',
+       'Passes to final third per 90', 'Accurate passes to final third, %', 'Progressive passes per 90',
+       'Accurate progressive passes, %',
 ]
 FB_FEATURES = [
-    "Aerial duels won, %","Defensive duels per 90","Defensive duels won, %","PAdj Interceptions",
-    "Passes per 90","Progressive passes per 90","Forward passes per 90","Progressive runs per 90",
-    "Dribbles per 90","xA per 90","Passes to penalty area per 90"
+       'Defensive duels per 90', 'Defensive duels won, %',
+       'Aerial duels per 90', 'Aerial duels won, %',
+       'PAdj Interceptions',
+       'Crosses per 90', 'Accurate crosses, %', 'Dribbles per 90',
+       'Successful dribbles, %', 'Touches in box per 90',
+       'Progressive runs per 90', 'Accelerations per 90', 'Passes per 90',
+       'Accurate passes, %', 'Forward passes per 90',
+       'Accurate forward passes, %', 'xA per 90', 
+       'Smart passes per 90', 'Key passes per 90',
+       'Passes to final third per 90', 'Accurate passes to final third, %',
+       'Passes to penalty area per 90',
+       'Deep completions per 90', 'Progressive passes per 90', 'Accurate progressive passes, %',
 ]
 CM_FEATURES = [
-    "Defensive duels per 90","Defensive duels won, %","PAdj Interceptions","Passes per 90",
-    "Accurate passes, %","Progressive passes per 90","Non-penalty goals per 90",
-    "Progressive runs per 90","Dribbles per 90","xA per 90","Passes to penalty area per 90"
+    'Successful defensive actions per 90',
+    'Defensive duels per 90', 'Defensive duels won, %',
+    'Aerial duels per 90', 'Aerial duels won, %', 'Shots blocked per 90',
+    'PAdj Interceptions', 'Non-penalty goals per 90', 'xG per 90', 
+    'Shots per 90', 'Shots on target, %',  'Dribbles per 90', 'Successful dribbles, %',
+    'Offensive duels per 90', 'Offensive duels won, %', 'Touches in box per 90',
+    'Progressive runs per 90', 'Accelerations per 90', 'Passes per 90',
+    'Accurate passes, %', 'Forward passes per 90',
+    'Accurate forward passes, %', 'Long passes per 90',
+    'Accurate long passes, %', 'xA per 90', 'Smart passes per 90',
+    'Key passes per 90', 'Passes to final third per 90', 
+    'Accurate passes to final third, %', 'Passes to penalty area per 90',
+    'Accurate passes to penalty area, %', 'Deep completions per 90',
+    'Progressive passes per 90', 
 ]
 ATT_FEATURES = [
-    "Aerial duels won, %","Defensive duels per 90","Passes per 90","Accurate passes, %",
-    "Passes to penalty area per 90","Deep completions per 90","Non-penalty goals per 90",
-    "xG per 90","Progressive runs per 90","Dribbles per 90","xA per 90"
+       'Defensive duels per 90', 
+       'Aerial duels per 90', 'Aerial duels won, %',
+       'PAdj Interceptions', 'xG per 90', 'Non-penalty goals per 90', 'Shots per 90',
+       'Crosses per 90', 'Accurate crosses, %', 'Dribbles per 90',
+       'Successful dribbles, %', 'Touches in box per 90',
+       'Progressive runs per 90', 'Accelerations per 90', 'Passes per 90',
+       'Accurate passes, %',  'xA per 90', 
+       'Smart passes per 90', 'Key passes per 90',
+       'Passes to final third per 90', 'Accurate passes to final third, %',
+       'Passes to penalty area per 90', 'Accurate passes to penalty area, %',
+       'Deep completions per 90', 'Progressive passes per 90',
 ]
 ST_FEATURES = [
-    "Non-penalty goals per 90","xG per 90","Shots per 90","Dribbles per 90","Successful dribbles, %",
-    "Touches in box per 90","Aerial duels per 90","Aerial duels won, %","Passes per 90",
-    "Accurate passes, %","xA per 90"
+    'Defensive duels per 90', 'Aerial duels per 90', 'Aerial duels won, %',
+    'Non-penalty goals per 90', 'xG per 90', 'Shots per 90', 'Shots on target, %',
+    'Crosses per 90',  'Dribbles per 90', 'Successful dribbles, %',
+    'Offensive duels per 90', 'Touches in box per 90', 'Progressive runs per 90',
+    'Passes per 90', 'Accurate passes, %', 'xA per 90', 'Smart passes per 90',
+    'Passes to final third per 90', 'Passes to penalty area per 90',
+    'Deep completions per 90'
 ]
 
 MODE_FEATURES = {
@@ -85,7 +125,7 @@ MODE_FEATURES = {
     "Full Backs":   FB_FEATURES,
     "Midfielders":  CM_FEATURES,
     "Attackers":    ATT_FEATURES,
-    "Forwards":     ST_FEATURES,
+    "Strikers":     ST_FEATURES,
 }
 
 # ---------------------------
@@ -93,37 +133,63 @@ MODE_FEATURES = {
 # ---------------------------
 MODE_WEIGHTS = {
     "Centre Backs": {
-        "Defensive duels per 90": 5, "Defensive duels won, %": 5,
-        "Aerial duels per 90": 4,   "Aerial duels won, %": 5,
-        "PAdj Interceptions": 4,    "Passes per 90": 3, "Accurate passes, %": 3,
-        "Progressive passes per 90": 2, "Forward passes per 90": 2,
-        "Progressive runs per 90": 1, "Dribbles per 90": 1,
+    'Passes per 90': 2,
+    'Accurate passes, %': 2,
+    'Progressive passes per 90': 2,
+    'Defensive duels per 90': 2,
+    'Defensive duels won, %': 2,
+    'Dribbles per 90': 2,
+    'PAdj Interceptions': 2,
+    'Progressive runs per 90': 2,
+    'Aerial duels per 90': 2,
+    'Aerial duels won, %': 3,
     },
     "Full Backs": {
-        "Defensive duels per 90": 4, "Defensive duels won, %": 4,
-        "Aerial duels won, %": 3, "PAdj Interceptions": 3,
-        "Passes per 90": 3, "Progressive passes per 90": 4,
-        "Forward passes per 90": 3, "Progressive runs per 90": 3,
-        "Dribbles per 90": 3, "xA per 90": 4, "Passes to penalty area per 90": 4,
+    'Passes per 90': 2,
+    'Passes to penalty area per 90': 2,
+    'Dribbles per 90': 2,
+    'xA per 90': 2,
+    'Progressive passes per 90': 2,
+    'Defensive duels per 90': 2,
+    'Progresive runs per 90': 2,
+    'PAdj Interceptions': 2,
+    'Aerial duels won, %': 2,
+    'Touches in box per 90': 2,
     },
     "Midfielders": {
-        "Defensive duels per 90": 3, "Defensive duels won, %": 3, "PAdj Interceptions": 3,
-        "Passes per 90": 5, "Accurate passes, %": 4, "Progressive passes per 90": 5,
-        "Non-penalty goals per 90": 2, "Progressive runs per 90": 3,
-        "Dribbles per 90": 2, "xA per 90": 3, "Passes to penalty area per 90": 4,
+    'Passes per 90': 2,
+    'Progressive runs per 90': 2,
+    'Progressive passes per 90': 2,
+    'Dribbles per 90': 2,
+    'xA per 90': 2,
+    'Touches in box per 90': 2,
+    'Accurate passes, %': 2,
+    'Aerial duels won, %': 2, 
+    'Passes to penalty area per 90': 2,
+    'Defensive duels per 90': 2,
     },
     "Attackers": {
-        "Aerial duels won, %": 2, "Defensive duels per 90": 1,
-        "Passes per 90": 2, "Accurate passes, %": 2,
-        "Passes to penalty area per 90": 4, "Deep completions per 90": 4,
-        "Non-penalty goals per 90": 5, "xG per 90": 5,
-        "Progressive runs per 90": 4, "Dribbles per 90": 4, "xA per 90": 3,
+    'xG per 90': 2,
+    'Shots per 90': 2,
+    'Dribbles per 90': 2,
+    'Crosses per 90': 2,
+    'Non-penalty goals per 90': 2,
+    'xA per 90': 2,
+    'Progressive passes per 90': 2,
+    'Defensive duels per 90': 2,
+    'Passes per 90': 2,
+    'Passes to penalty area per 90': 2,
+    'Aerial duels won, %': 2,
     },
-    "Forwards": {
-        "Non-penalty goals per 90": 5, "xG per 90": 5, "Shots per 90": 4,
-        "Touches in box per 90": 4, "Dribbles per 90": 3, "Successful dribbles, %": 2,
-        "Aerial duels per 90": 3, "Aerial duels won, %": 3,
-        "Passes per 90": 2, "Accurate passes, %": 2, "xA per 90": 2,
+    "Strikers": {
+    'Passes per 90': 3,
+    'Dribbles per 90': 3,
+    'Non-penalty goals per 90': 3,
+    'Aerial duels won, %': 2,
+    'Aerial duels per 90': 3,
+    'xA per 90': 2,
+    'xG per 90': 3,
+    'Touches in box per 90': 2,
     },
 }
 
