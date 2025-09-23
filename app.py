@@ -1,0 +1,413 @@
+# app.py — Player Similarity Finder (top toggle + per-role features & weights)
+import streamlit as st
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+import math
+
+st.set_page_config(page_title="Player Similarity Finder", layout="wide")
+
+# ====== Big pill toggle styling ======
+st.markdown("""
+<style>
+div.top-toggle {margin: .25rem 0 1rem 0;}
+div.top-toggle .stRadio > div {flex-direction: row; gap: 10px;}
+div.top-toggle label {padding: 10px 16px; border-radius: 999px; border:1px solid #E5E7EB;
+  background:#F8FAFC; font-weight:700;}
+div.top-toggle input:checked + div > label {background:#E5F0FF; border-color:#93C5FD; color:#1D4ED8;}
+</style>
+""", unsafe_allow_html=True)
+
+# --- Load dataset ---
+df = pd.read_csv("WORLDJUNE25.csv")
+
+st.title("⚽ Player Similarity Finder")
+
+# ---------------------------
+# POSITION GROUPS
+# ---------------------------
+def attackers_mask(series: pd.Series) -> pd.Series:
+    s = series.astype(str).str.upper().str.strip()
+    prefixes = ('RWF','LWF','LAMF','RAMF','AMF','RW,','LW,')
+    return s.isin(['RW','LW']) | s.str.startswith(prefixes)
+
+def group_mask(series: pd.Series, group: str) -> pd.Series:
+    s = series.astype(str).str.upper().str.strip()
+    if group == "Centre Backs": return s.str.startswith(('LCB','RCB','CB'))
+    if group == "Full Backs":   return s.str.startswith(('LB','LWB','RB','RWB'))
+    if group == "Midfielders":  return s.str.startswith(('LCMF','RCMF','LDMF','RDMF','DMF'))
+    if group == "Attackers":    return attackers_mask(series)
+    if group == "Forwards":     return s.str.startswith(('CF',))
+    return pd.Series([True]*len(series), index=series.index)
+
+# ---------------------------
+# TOGGLE (top of page)
+# ---------------------------
+st.markdown('<div class="top-toggle">', unsafe_allow_html=True)
+calc_mode = st.radio(
+    "Choose calculation mode",
+    ["Centre Backs", "Full Backs", "Midfielders", "Attackers", "Forwards"],
+    horizontal=True, label_visibility="collapsed", key="mode_toggle_top"
+)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------------------
+# FEATURE PRESETS PER MODE
+# ---------------------------
+CB_FEATURES = [
+    "Aerial duels per 90","Aerial duels won, %","Defensive duels per 90","Defensive duels won, %",
+    "PAdj Interceptions","Passes per 90","Accurate passes, %","Progressive passes per 90",
+    "Forward passes per 90","Progressive runs per 90","Dribbles per 90"
+]
+FB_FEATURES = [
+    "Aerial duels won, %","Defensive duels per 90","Defensive duels won, %","PAdj Interceptions",
+    "Passes per 90","Progressive passes per 90","Forward passes per 90","Progressive runs per 90",
+    "Dribbles per 90","xA per 90","Passes to penalty area per 90"
+]
+CM_FEATURES = [
+    "Defensive duels per 90","Defensive duels won, %","PAdj Interceptions","Passes per 90",
+    "Accurate passes, %","Progressive passes per 90","Non-penalty goals per 90",
+    "Progressive runs per 90","Dribbles per 90","xA per 90","Passes to penalty area per 90"
+]
+ATT_FEATURES = [
+    "Aerial duels won, %","Defensive duels per 90","Passes per 90","Accurate passes, %",
+    "Passes to penalty area per 90","Deep completions per 90","Non-penalty goals per 90",
+    "xG per 90","Progressive runs per 90","Dribbles per 90","xA per 90"
+]
+ST_FEATURES = [
+    "Non-penalty goals per 90","xG per 90","Shots per 90","Dribbles per 90","Successful dribbles, %",
+    "Touches in box per 90","Aerial duels per 90","Aerial duels won, %","Passes per 90",
+    "Accurate passes, %","xA per 90"
+]
+
+MODE_FEATURES = {
+    "Centre Backs": CB_FEATURES,
+    "Full Backs":   FB_FEATURES,
+    "Midfielders":  CM_FEATURES,
+    "Attackers":    ATT_FEATURES,
+    "Forwards":     ST_FEATURES,
+}
+
+# ---------------------------
+# DEFAULT WEIGHTS PER MODE (starter values; edit in UI)
+# Scale: 1=low emphasis … 5=high emphasis
+# ---------------------------
+MODE_WEIGHTS = {
+    "Centre Backs": {
+        "Defensive duels per 90": 5,
+        "Defensive duels won, %": 5,
+        "Aerial duels per 90":    4,
+        "Aerial duels won, %":    5,
+        "PAdj Interceptions":     4,
+        "Passes per 90":          3,
+        "Accurate passes, %":     3,
+        "Progressive passes per 90": 2,
+        "Forward passes per 90":  2,
+        "Progressive runs per 90": 1,
+        "Dribbles per 90":        1,
+    },
+    "Full Backs": {
+        "Defensive duels per 90": 4,
+        "Defensive duels won, %": 4,
+        "Aerial duels won, %":    3,
+        "PAdj Interceptions":     3,
+        "Passes per 90":          3,
+        "Progressive passes per 90": 4,
+        "Forward passes per 90":  3,
+        "Progressive runs per 90": 3,
+        "Dribbles per 90":        3,
+        "xA per 90":              4,
+        "Passes to penalty area per 90": 4,
+    },
+    "Midfielders": {
+        "Defensive duels per 90": 3,
+        "Defensive duels won, %": 3,
+        "PAdj Interceptions":     3,
+        "Passes per 90":          5,
+        "Accurate passes, %":     4,
+        "Progressive passes per 90": 5,
+        "Non-penalty goals per 90": 2,
+        "Progressive runs per 90": 3,
+        "Dribbles per 90":        2,
+        "xA per 90":              3,
+        "Passes to penalty area per 90": 4,
+    },
+    "Attackers": {
+        "Aerial duels won, %":    2,
+        "Defensive duels per 90": 1,
+        "Passes per 90":          2,
+        "Accurate passes, %":     2,
+        "Passes to penalty area per 90": 4,
+        "Deep completions per 90": 4,
+        "Non-penalty goals per 90": 5,
+        "xG per 90":              5,
+        "Progressive runs per 90": 4,
+        "Dribbles per 90":        4,
+        "xA per 90":              3,
+    },
+    "Forwards": {
+        "Non-penalty goals per 90": 5,
+        "xG per 90":              5,
+        "Shots per 90":           4,
+        "Touches in box per 90":  4,
+        "Dribbles per 90":        3,
+        "Successful dribbles, %": 2,
+        "Aerial duels per 90":    3,
+        "Aerial duels won, %":    3,
+        "Passes per 90":          2,
+        "Accurate passes, %":     2,
+        "xA per 90":              2,
+    },
+}
+
+# ---------------------------
+# LEAGUE PRESETS / CONSTANTS (unchanged)
+# ---------------------------
+included_leagues = [
+    'England 1.','England 2.','England 3.','England 4.','England 5.',
+    'England 6.','England 7.','England 8.','England 9.','England 10.',
+    'Albania 1.','Algeria 1.','Andorra 1.','Argentina 1.','Armenia 1.',
+    'Australia 1.','Austria 1.','Austria 2.','Azerbaijan 1.','Belgium 1.',
+    'Belgium 2.','Bolivia 1.','Bosnia 1.','Brazil 1.','Brazil 2.','Brazil 3.',
+    'Bulgaria 1.','Canada 1.','Chile 1.','Colombia 1.','Costa Rica 1.',
+    'Croatia 1.','Cyprus 1.','Czech 1.','Czech 2.','Denmark 1.','Denmark 2.',
+    'Ecuador 1.','Egypt 1.','Estonia 1.','Finland 1.','France 1.','France 2.',
+    'France 3.','Georgia 1.','Germany 1.','Germany 2.','Germany 3.',
+    'Germany 4.','Greece 1.','Hungary 1.','Iceland 1.','Israel 1.','Israel 2.',
+    'Italy 1.','Italy 2.','Italy 3.','Japan 1.','Japan 2.','Kazakhstan 1.',
+    'Korea 1.','Latvia 1.','Lithuania 1.','Malta 1.','Mexico 1.','Moldova 1.',
+    'Morocco 1.','Netherlands 1.','Netherlands 2.','North Macedonia 1.',
+    'Northern Ireland 1.','Norway 1.','Norway 2.','Paraguay 1.','Peru 1.',
+    'Poland 1.','Poland 2.','Portugal 1.','Portugal 2.','Portugal 3.','Qatar 1.',
+    'Ireland 1.','Romania 1.','Russia 1.','Saudi 1.','Scotland 1.','Scotland 2.',
+    'Scotland 3.','Serbia 1.','Serbia 2.','Slovakia 1.','Slovakia 2.',
+    'Slovenia 1.','Slovenia 2.','South Africa 1.','Spain 1.','Spain 2.','Spain 3.',
+    'Sweden 1.','Sweden 2.','Switzerland 1.','Switzerland 2.','Tunisia 1.',
+    'Turkey 1.','Turkey 2.','Ukraine 1.','UAE 1.','USA 1.','USA 2.',
+    'Uruguay 1.','Uzbekistan 1.','Venezuela 1.','Wales 1.'
+]
+
+PRESETS = {
+    "Top 5 Europe": ['England 1.','France 1.','Germany 1.','Italy 1.','Spain 1.'],
+    "Top 20 Europe": [
+        'England 1.','Italy 1.','Spain 1.','Germany 1.','France 1.','England 2.',
+        'Portugal 1.','Belgium 1.','Turkey 1.','Germany 2.','Spain 2.','France 2.',
+        'Netherlands 1.','Austria 1.','Switzerland 1.','Denmark 1.','Croatia 1.',
+        'Italy 2.','Czech 1.','Norway 1.'
+    ],
+    "EFL (England 2–4)": ['England 2.','England 3.','England 4.'],
+    "All listed leagues": included_leagues,
+    "Custom": None,
+}
+
+# Strengths (trimmed for brevity — keep yours)
+league_strengths = {lg:50.0 for lg in included_leagues}
+league_strengths.update({'England 1.':100,'Italy 1.':97,'Spain 1.':94,'Germany 1.':94,'France 1.':91})
+
+DEFAULT_PERCENTILE_WEIGHT = 0.7
+DEFAULT_LEAGUE_WEIGHT = 0.4
+
+# ---------------------------
+# SIDEBAR CONTROLS
+# ---------------------------
+features = MODE_FEATURES[calc_mode]
+default_role_weights = MODE_WEIGHTS[calc_mode]
+
+with st.sidebar:
+    st.header("Leagues")
+
+    target_leagues = st.multiselect(
+        "Target leagues (for choosing the target player)",
+        sorted(set(included_leagues) | set(df.get('League', pd.Series([])).dropna().unique())),
+        default=included_leagues
+    )
+
+    if 'candidate_leagues' not in st.session_state:
+        st.session_state.candidate_leagues = included_leagues.copy()
+
+    preset_name = st.selectbox("Candidate pool preset", list(PRESETS.keys()), index=0)
+
+    if st.button("Apply preset"):
+        preset = PRESETS.get(preset_name)
+        st.session_state.candidate_leagues = preset if preset is not None else included_leagues.copy()
+
+    all_league_options = sorted(set(included_leagues) | set(df.get('League', pd.Series([])).dropna().unique()))
+
+    extra_leagues = []
+    if preset_name != "Custom":
+        extra_leagues = st.multiselect("Extra leagues to include", all_league_options, default=[])
+        prefill = sorted(set(st.session_state.candidate_leagues) | set(extra_leagues))
+    else:
+        prefill = list(st.session_state.candidate_leagues)
+
+    prefill = sorted([lg for lg in prefill if lg in all_league_options])
+    leagues_selected = st.multiselect("Leagues (add or prune the presets)", all_league_options, default=prefill)
+
+    st.caption(f"Candidate pool has **{len(leagues_selected)}** leagues.")
+
+    # Target only from selected mode + leagues
+    player_names = df[df['League'].isin(target_leagues) & group_mask(df['Position'], calc_mode)]['Player'].dropna().unique()
+    target_player = st.selectbox("Target player", sorted(player_names))
+
+    st.header("Filters")
+    min_minutes, max_minutes = st.slider("Minutes played", 0, 5000, (500, 5000))
+    min_age, max_age = st.slider("Age", 14, 45, (16, 40))
+
+    mv_col = 'Market value'
+    mv_max_raw = int(np.nanmax(df[mv_col])) if mv_col in df.columns and df[mv_col].notna().any() else 150_000_000
+    mv_cap = int(math.ceil(mv_max_raw / 5_000_000) * 5_000_000)
+
+    st.markdown("**Market value (€)**")
+    use_millions = st.checkbox("Adjust in millions", True)
+    if use_millions:
+        max_m = int(mv_cap // 1_000_000)
+        mv_min_m, mv_max_m = st.slider("Range (M€)", 0, max_m, (0, max_m))
+        min_value = mv_min_m * 1_000_000
+        max_value = mv_max_m * 1_000_000
+        st.caption(f"Selected: €{min_value:,.0f} – €{max_value:,.0f}")
+    else:
+        min_value, max_value = st.slider("Range (€)", 0, mv_cap, (0, mv_cap), step=100_000)
+        st.caption(f"Selected: €{min_value:,.0f} – €{max_value:,.0f}")
+
+    with st.expander("Exact market value range (override)"):
+        c1, c2 = st.columns(2)
+        min_value = c1.number_input("Min (€)", value=min_value, min_value=0, max_value=mv_cap, step=50_000, format="%d")
+        max_value = c2.number_input("Max (€)", value=max_value, min_value=0, max_value=mv_cap, step=50_000, format="%d")
+        if min_value > max_value:
+            st.warning("Min value is greater than max value; swapping.")
+            min_value, max_value = max_value, min_value
+
+    min_strength, max_strength = st.slider("League quality (strength)", 0, 101, (0, 101))
+
+    st.subheader("Blending weights")
+    percentile_weight = st.slider("Percentile weight", 0.0, 1.0, DEFAULT_PERCENTILE_WEIGHT, 0.05)
+    league_weight = st.slider("League weight (difficulty adjustment)", 0.0, 1.0, DEFAULT_LEAGUE_WEIGHT, 0.05)
+    st.caption(f"Actual value weight is {1.0 - percentile_weight:.2f}")
+
+    with st.expander("Feature weights (role defaults prefilled)"):
+        wf = {}
+        for f in features:
+            wf[f] = st.slider(f"{f}", 1, 5, int(default_role_weights.get(f, 3)))
+
+    top_n = st.number_input("Show top N", min_value=5, max_value=200, value=50, step=5)
+
+# ---------------------------
+# COMPUTATION
+# ---------------------------
+required_cols = {'Player','Team','League','Age','Position','Minutes played','Market value', *features}
+missing = [c for c in required_cols if c not in df.columns]
+if missing:
+    st.error(f"Your data is missing required columns: {missing}")
+    st.stop()
+
+# Candidate pool: leagues + role + basic numeric completeness
+df_candidates = df[
+    df['League'].isin(leagues_selected) & group_mask(df['Position'], calc_mode)
+].copy()
+df_candidates = df_candidates.dropna(subset=features)
+
+# Target row (role + target leagues)
+df_target_pool = df[df['League'].isin(target_leagues) & group_mask(df['Position'], calc_mode)].copy()
+if target_player not in df_target_pool['Player'].values:
+    st.warning("Target player not found in target leagues for this role.")
+    st.stop()
+target_row_full = df_target_pool.loc[df_target_pool['Player'] == target_player].iloc[0]
+target_league = target_row_full['League']
+
+if df_candidates.empty:
+    st.warning("No candidates after filters/preset. Widen leagues or relax filters.")
+    st.stop()
+
+# Arrays
+target_features = target_row_full[features].values.reshape(1, -1)
+
+# Percentiles by league (within candidates)
+percentile_ranks = df_candidates.groupby('League')[features].rank(pct=True).values
+target_percentiles = (
+    df.groupby('League')[features]
+    .rank(pct=True)
+    .loc[df['Player'] == target_player]
+    .values
+)
+
+# Weights array
+weights = np.array([wf.get(f, 3) for f in features], dtype=float)
+
+# Standardize over candidate pool (actual values)
+scaler = StandardScaler()
+standardized_features = scaler.fit_transform(df_candidates[features])
+target_features_standardized = scaler.transform(target_features)
+
+# Distances
+percentile_distances = np.linalg.norm((percentile_ranks - target_percentiles) * weights, axis=1)
+actual_value_distances = np.linalg.norm((standardized_features - target_features_standardized) * weights, axis=1)
+
+combined = percentile_distances * percentile_weight + actual_value_distances * (1.0 - percentile_weight)
+
+# Normalize to similarity 0..100
+norm = (combined - np.min(combined)) / (np.ptp(combined) if np.ptp(combined) != 0 else 1.0)
+similarities = ((1 - norm) * 100).round(2)
+
+# Result frame
+similarity_df = df_candidates.copy()
+similarity_df['Similarity'] = similarities
+similarity_df = similarity_df[similarity_df['Player'] != target_player]
+
+# User filters
+similarity_df = similarity_df[
+    (similarity_df['Market value'] >= min_value) &
+    (similarity_df['Market value'] <= max_value) &
+    (similarity_df['Minutes played'] >= min_minutes) &
+    (similarity_df['Minutes played'] <= max_minutes) &
+    (similarity_df['Age'] >= min_age) &
+    (similarity_df['Age'] <= max_age)
+]
+
+# League strength filter & symmetric difficulty adjustment
+similarity_df['League strength'] = similarity_df['League'].map(league_strengths).fillna(0.0)
+target_league_strength = float(league_strengths.get(target_league, 1.0))
+similarity_df = similarity_df[
+    (similarity_df['League strength'] >= float(min_strength)) &
+    (similarity_df['League strength'] <= float(max_strength))
+]
+
+eps = 1e-6
+cand_ls = np.maximum(similarity_df['League strength'].astype(float), eps)
+tgt_ls_safe = max(target_league_strength, eps)
+league_ratio = np.minimum(cand_ls / tgt_ls_safe, tgt_ls_safe / cand_ls)  # <= 1
+
+similarity_df['Adjusted Similarity'] = (
+    similarity_df['Similarity'] * ((1 - league_weight) + league_weight * league_ratio)
+)
+
+similarity_df = similarity_df.sort_values('Adjusted Similarity', ascending=False).reset_index(drop=True)
+similarity_df.insert(0, 'Rank', np.arange(1, len(similarity_df) + 1))
+
+# ---------------------------
+# UI OUTPUT
+# ---------------------------
+st.subheader(f"{calc_mode} — Similar to: {target_player}  |  Target league: {target_league} (strength {target_league_strength:.1f})")
+
+cols_to_show = ['Rank','Player','Team','League','Age','Minutes played','Market value','Adjusted Similarity']
+cols_to_show = [c for c in cols_to_show if c in similarity_df.columns]
+
+st.dataframe(similarity_df[cols_to_show].head(int(top_n)), use_container_width=True)
+
+csv = similarity_df[cols_to_show].to_csv(index=False).encode('utf-8')
+st.download_button("⬇️ Download full results (CSV)", data=csv, file_name="similarity_results.csv", mime="text/csv")
+
+with st.expander("Debug / Repro details"):
+    st.write({
+        "mode": calc_mode,
+        "candidate_preset": preset_name,
+        "candidate_leagues_final_count": len(leagues_selected),
+        "target_leagues_count": len(target_leagues),
+        "percentile_weight": float(percentile_weight),
+        "league_weight": float(league_weight),
+        "target_league_strength": float(target_league_strength),
+        "n_candidates": int(len(similarity_df)),
+        "market_value_range": (int(min_value), int(max_value)),
+        "minutes_range": (int(min_minutes), int(max_minutes)),
+        "features_used": features,
+        "weights_used": {f:int(wf.get(f,3)) for f in features},
+    })
