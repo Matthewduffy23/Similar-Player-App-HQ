@@ -46,7 +46,7 @@ def group_mask(series: pd.Series, group: str) -> pd.Series:
 st.markdown('<div class="top-toggle">', unsafe_allow_html=True)
 calc_mode = st.radio(
     "Choose calculation mode",
-    ["Centre Backs", "Full Backs", "Midfielders", "Attackers", "Forwards"],
+    ["Centre Backs", "Full Backs", "Midfielders", "Attackers", "Strikers"],
     horizontal=True, label_visibility="collapsed", key="mode_toggle_top"
 )
 st.markdown('</div>', unsafe_allow_html=True)
