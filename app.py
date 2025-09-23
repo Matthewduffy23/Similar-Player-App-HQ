@@ -1,4 +1,4 @@
-# app.py — Player Similarity Finder (top toggle + per-role features & weights)
+# app.py — Player Similarity Finder (top toggle + per-role features & weights + full league strengths)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -90,78 +90,45 @@ MODE_FEATURES = {
 
 # ---------------------------
 # DEFAULT WEIGHTS PER MODE (starter values; edit in UI)
-# Scale: 1=low emphasis … 5=high emphasis
 # ---------------------------
 MODE_WEIGHTS = {
     "Centre Backs": {
-        "Defensive duels per 90": 5,
-        "Defensive duels won, %": 5,
-        "Aerial duels per 90":    4,
-        "Aerial duels won, %":    5,
-        "PAdj Interceptions":     4,
-        "Passes per 90":          3,
-        "Accurate passes, %":     3,
-        "Progressive passes per 90": 2,
-        "Forward passes per 90":  2,
-        "Progressive runs per 90": 1,
-        "Dribbles per 90":        1,
+        "Defensive duels per 90": 5, "Defensive duels won, %": 5,
+        "Aerial duels per 90": 4,   "Aerial duels won, %": 5,
+        "PAdj Interceptions": 4,    "Passes per 90": 3, "Accurate passes, %": 3,
+        "Progressive passes per 90": 2, "Forward passes per 90": 2,
+        "Progressive runs per 90": 1, "Dribbles per 90": 1,
     },
     "Full Backs": {
-        "Defensive duels per 90": 4,
-        "Defensive duels won, %": 4,
-        "Aerial duels won, %":    3,
-        "PAdj Interceptions":     3,
-        "Passes per 90":          3,
-        "Progressive passes per 90": 4,
-        "Forward passes per 90":  3,
-        "Progressive runs per 90": 3,
-        "Dribbles per 90":        3,
-        "xA per 90":              4,
-        "Passes to penalty area per 90": 4,
+        "Defensive duels per 90": 4, "Defensive duels won, %": 4,
+        "Aerial duels won, %": 3, "PAdj Interceptions": 3,
+        "Passes per 90": 3, "Progressive passes per 90": 4,
+        "Forward passes per 90": 3, "Progressive runs per 90": 3,
+        "Dribbles per 90": 3, "xA per 90": 4, "Passes to penalty area per 90": 4,
     },
     "Midfielders": {
-        "Defensive duels per 90": 3,
-        "Defensive duels won, %": 3,
-        "PAdj Interceptions":     3,
-        "Passes per 90":          5,
-        "Accurate passes, %":     4,
-        "Progressive passes per 90": 5,
-        "Non-penalty goals per 90": 2,
-        "Progressive runs per 90": 3,
-        "Dribbles per 90":        2,
-        "xA per 90":              3,
-        "Passes to penalty area per 90": 4,
+        "Defensive duels per 90": 3, "Defensive duels won, %": 3, "PAdj Interceptions": 3,
+        "Passes per 90": 5, "Accurate passes, %": 4, "Progressive passes per 90": 5,
+        "Non-penalty goals per 90": 2, "Progressive runs per 90": 3,
+        "Dribbles per 90": 2, "xA per 90": 3, "Passes to penalty area per 90": 4,
     },
     "Attackers": {
-        "Aerial duels won, %":    2,
-        "Defensive duels per 90": 1,
-        "Passes per 90":          2,
-        "Accurate passes, %":     2,
-        "Passes to penalty area per 90": 4,
-        "Deep completions per 90": 4,
-        "Non-penalty goals per 90": 5,
-        "xG per 90":              5,
-        "Progressive runs per 90": 4,
-        "Dribbles per 90":        4,
-        "xA per 90":              3,
+        "Aerial duels won, %": 2, "Defensive duels per 90": 1,
+        "Passes per 90": 2, "Accurate passes, %": 2,
+        "Passes to penalty area per 90": 4, "Deep completions per 90": 4,
+        "Non-penalty goals per 90": 5, "xG per 90": 5,
+        "Progressive runs per 90": 4, "Dribbles per 90": 4, "xA per 90": 3,
     },
     "Forwards": {
-        "Non-penalty goals per 90": 5,
-        "xG per 90":              5,
-        "Shots per 90":           4,
-        "Touches in box per 90":  4,
-        "Dribbles per 90":        3,
-        "Successful dribbles, %": 2,
-        "Aerial duels per 90":    3,
-        "Aerial duels won, %":    3,
-        "Passes per 90":          2,
-        "Accurate passes, %":     2,
-        "xA per 90":              2,
+        "Non-penalty goals per 90": 5, "xG per 90": 5, "Shots per 90": 4,
+        "Touches in box per 90": 4, "Dribbles per 90": 3, "Successful dribbles, %": 2,
+        "Aerial duels per 90": 3, "Aerial duels won, %": 3,
+        "Passes per 90": 2, "Accurate passes, %": 2, "xA per 90": 2,
     },
 }
 
 # ---------------------------
-# LEAGUE PRESETS / CONSTANTS (unchanged)
+# LEAGUE PRESETS / CONSTANTS
 # ---------------------------
 included_leagues = [
     'England 1.','England 2.','England 3.','England 4.','England 5.',
@@ -200,9 +167,38 @@ PRESETS = {
     "Custom": None,
 }
 
-# Strengths (trimmed for brevity — keep yours)
-league_strengths = {lg:50.0 for lg in included_leagues}
-league_strengths.update({'England 1.':100,'Italy 1.':97,'Spain 1.':94,'Germany 1.':94,'France 1.':91})
+# Strengths (0–100 scale) — FULL mapping
+league_strengths = {
+    'England 1.': 100.00, 'Italy 1.': 97.14, 'Spain 1.': 94.29, 'Germany 1.': 94.29,
+    'France 1.': 91.43, 'Brazil 1.': 82.86, 'England 2.': 71.43, 'Portugal 1.': 71.43,
+    'Argentina 1.': 71.43, 'Belgium 1.': 68.57, 'Mexico 1.': 68.57, 'Turkey 1.': 65.71,
+    'Germany 2.': 65.71, 'Spain 2.': 65.71, 'France 2.': 65.71, 'USA 1.': 65.71,
+    'Russia 1.': 65.71, 'Colombia 1.': 62.86, 'Netherlands 1.': 62.86, 'Austria 1.': 62.86,
+    'Switzerland 1.': 62.86, 'Denmark 1.': 62.86, 'Croatia 1.': 62.86, 'Japan 1.': 62.86,
+    'Korea 1.': 62.86, 'Italy 2.': 62.86, 'Czech 1.': 57.14, 'Norway 1.': 57.14,
+    'Poland 1.': 57.14, 'Romania 1.': 57.14, 'Israel 1.': 57.14, 'Algeria 1.': 57.14,
+    'Paraguay 1.': 57.14, 'Saudi 1.': 57.14, 'Uruguay 1.': 57.14, 'Morocco 1.': 57.00,
+    'Brazil 2.': 56.00, 'Ukraine 1.': 54.29, 'Ecuador 1.': 54.29, 'Spain 3.': 54.29,
+    'Scotland 1.': 54.29, 'Chile 1.': 51.43, 'Cyprus 1.': 51.43, 'Portugal 2.': 51.43,
+    'Slovakia 1.': 51.43, 'Australia 1.': 51.43, 'Hungary 1.': 51.43, 'Egypt 1.': 51.43,
+    'England 3.': 51.43, 'France 3.': 48.00, 'Japan 2.': 48.00, 'Bulgaria 1.': 48.57,
+    'Slovenia 1.': 48.57, 'Venezuela 1.': 48.00, 'Germany 3.': 45.71, 'Albania 1.': 44.00,
+    'Serbia 1.': 42.86, 'Belgium 2.': 42.86, 'Bosnia 1.': 42.86, 'Kosovo 1.': 42.86,
+    'Nigeria 1.': 42.86, 'Azerbaijan 1.': 50.00, 'Bolivia 1.': 50.00, 'Costa Rica 1.': 50.00,
+    'South Africa 1.': 50.00, 'UAE 1.': 50.00, 'Georgia 1.': 40.00, 'Finland 1.': 40.00,
+    'Italy 3.': 40.00, 'Peru 1.': 40.00, 'Tunisia 1.': 40.00, 'USA 2.': 40.00,
+    'Armenia 1.': 40.00, 'North Macedonia 1.': 40.00, 'Qatar 1.': 40.00, 'Uzbekistan 1.': 42.00,
+    'Norway 2.': 42.00, 'Kazakhstan 1.': 42.00, 'Poland 2.': 38.00, 'Denmark 2.': 37.00,
+    'Czech 2.': 37.14, 'Israel 2.': 37.14, 'Netherlands 2.': 37.14, 'Switzerland 2.': 37.14,
+    'Iceland 1.': 34.29, 'Macedonia 1.': 34.29, 'Ireland 1.': 34.29, 'Sweden 2.': 34.29,
+    'Germany 4.': 34.29, 'Malta 1.': 30.00, 'Turkey 2.': 31.43, 'Canada 1.': 28.57,
+    'England 4.': 28.57, 'Scotland 2.': 28.57, 'Moldova 1.': 28.57, 'Austria 2.': 25.71,
+    'Lithuania 1.': 25.71, 'Brazil 3.': 25.00, 'England 7.': 25.00, 'Slovenia 2.': 22.00,
+    'Latvia 1.': 22.86, 'Serbia 2.': 20.00, 'Slovakia 2.': 20.00, 'England 9.': 20.00,
+    'England 8.': 15.00, 'Montenegro 1.': 14.29, 'Wales 1.': 12.00, 'Portugal 3.': 11.43,
+    'Northern Ireland 1.': 11.43, 'England 5.': 11.43, 'Andorra 1.': 10.00, 'Estonia 1.': 8.57,
+    'England 10.': 5.00, 'Scotland 3.': 0.00, 'England 6.': 0.00
+}
 
 DEFAULT_PERCENTILE_WEIGHT = 0.7
 DEFAULT_LEAGUE_WEIGHT = 0.4
@@ -300,10 +296,8 @@ if missing:
     st.error(f"Your data is missing required columns: {missing}")
     st.stop()
 
-# Candidate pool: leagues + role + basic numeric completeness
-df_candidates = df[
-    df['League'].isin(leagues_selected) & group_mask(df['Position'], calc_mode)
-].copy()
+# Candidate pool: leagues + role + numeric completeness
+df_candidates = df[df['League'].isin(leagues_selected) & group_mask(df['Position'], calc_mode)].copy()
 df_candidates = df_candidates.dropna(subset=features)
 
 # Target row (role + target leagues)
@@ -366,11 +360,13 @@ similarity_df = similarity_df[
 # League strength filter & symmetric difficulty adjustment
 similarity_df['League strength'] = similarity_df['League'].map(league_strengths).fillna(0.0)
 target_league_strength = float(league_strengths.get(target_league, 1.0))
+
 similarity_df = similarity_df[
     (similarity_df['League strength'] >= float(min_strength)) &
     (similarity_df['League strength'] <= float(max_strength))
 ]
 
+# Symmetric difficulty adjustment (never boosts above baseline)
 eps = 1e-6
 cand_ls = np.maximum(similarity_df['League strength'].astype(float), eps)
 tgt_ls_safe = max(target_league_strength, eps)
@@ -411,3 +407,4 @@ with st.expander("Debug / Repro details"):
         "features_used": features,
         "weights_used": {f:int(wf.get(f,3)) for f in features},
     })
+
