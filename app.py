@@ -278,34 +278,54 @@ default_role_weights = MODE_WEIGHTS[calc_mode]
 with st.sidebar:
     st.header("Leagues")
 
+    # --- Target leagues (choose the player from these)
     target_leagues = st.multiselect(
         "Target leagues (for choosing the target player)",
         sorted(set(included_leagues) | set(df.get('League', pd.Series([])).dropna().unique())),
         default=included_leagues
     )
 
-    if 'candidate_leagues' not in st.session_state:
-        st.session_state.candidate_leagues = included_leagues.copy()
+    # --- Candidate leagues: presets + manual tweaks
+    st.markdown("**Candidate pool**")
 
-    preset_name = st.selectbox("Candidate pool preset", list(PRESETS.keys()), index=0)
+    preset_name = st.selectbox(
+        "Start from a preset",
+        list(PRESETS.keys()),
+        index=0,
+        help="Pick a preset pool of leagues, then add/remove below"
+    )
 
-    if st.button("Apply preset"):
-        preset = PRESETS.get(preset_name)
-        st.session_state.candidate_leagues = preset if preset is not None else included_leagues.copy()
-
-    all_league_options = sorted(set(included_leagues) | set(df.get('League', pd.Series([])).dropna().unique()))
-
-    extra_leagues = []
-    if preset_name != "Custom":
-        extra_leagues = st.multiselect("Extra leagues to include", all_league_options, default=[])
-        prefill = sorted(set(st.session_state.candidate_leagues) | set(extra_leagues))
+    preset = PRESETS.get(preset_name)
+    if preset is None:
+        base_leagues = st.session_state.get("candidate_leagues", included_leagues.copy())
     else:
-        prefill = list(st.session_state.candidate_leagues)
+        base_leagues = preset.copy()
 
-    prefill = sorted([lg for lg in prefill if lg in all_league_options])
-    leagues_selected = st.multiselect("Leagues (add or prune the presets)", all_league_options, default=prefill)
+    # Extra leagues (always additive)
+    all_league_options = sorted(set(included_leagues) | set(df.get('League', pd.Series([])).dropna().unique()))
+    extra_leagues = st.multiselect(
+        "Add extra leagues",
+        all_league_options,
+        default=[]
+    )
 
-    st.caption(f"Candidate pool has **{len(leagues_selected)}** leagues.")
+    # Combined starting set
+    combined_leagues = sorted(set(base_leagues) | set(extra_leagues))
+
+    # Final tweak: prune or add freely
+    leagues_selected = st.multiselect(
+        "Final leagues (edit freely)",
+        all_league_options,
+        default=combined_leagues
+    )
+
+    st.caption(
+        f"Preset: **{preset_name}** → Final pool has **{len(leagues_selected)}** leagues"
+    )
+
+    # Save state
+    st.session_state.candidate_leagues = leagues_selected
+
 
     # Target only from selected mode + leagues
     player_names = df[df['League'].isin(target_leagues) & group_mask(df['Position'], calc_mode)]['Player'].dropna().unique()
