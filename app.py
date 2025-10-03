@@ -244,7 +244,6 @@ with st.sidebar:
     with st.expander("Feature weights (prefilled by role)"):
         wf = {}
         for f in features:
-            # Default to 1 if not explicitly set for the role
             wf[f] = st.slider(f"{f}", 1, 5, int(default_role_weights.get(f, 1)))
     top_n = st.number_input("Show top N", min_value=5, max_value=200, value=50, step=5)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -258,14 +257,14 @@ if missing:
     st.error(f"Your data is missing required columns: {missing}")
     st.stop()
 
-# Candidate pool: by preset leagues + role + feature completeness
+# Candidate pool
 df_candidates = df[df['League'].isin(leagues_selected) & group_mask(df['Position'], calc_mode)].copy()
 df_candidates = df_candidates.dropna(subset=features)
 if df_candidates.empty:
     st.warning("No candidates after filters/preset. Choose a different preset or relax filters.")
     st.stop()
 
-# Target row (from the full dataset but by role only)
+# Target row
 df_role_pool = df[group_mask(df['Position'], calc_mode)].copy()
 if target_player not in df_role_pool['Player'].values:
     st.warning("Target player not found for this role.")
@@ -275,9 +274,8 @@ target_league = str(target_row['League'])
 
 target_features = target_row[features].values.reshape(1, -1)
 
-# Percentiles within each league (for candidate pool)
+# Percentiles within each league
 percentile_ranks = df_candidates.groupby('League')[features].rank(pct=True).values
-# Target percentiles: compute over the whole dataset by league, then pick target
 target_percentiles = (
     df.groupby('League')[features]
       .rank(pct=True)
@@ -285,7 +283,7 @@ target_percentiles = (
       .values
 )
 
-# Feature weights vector
+# Feature weights
 weights = np.array([wf.get(f, 1) for f in features], dtype=float)
 
 # Standardize actual values over candidate pool
@@ -296,7 +294,6 @@ target_features_standardized = scaler.transform(target_features)
 # Distances
 percentile_distances = np.linalg.norm((percentile_ranks - target_percentiles) * weights, axis=1)
 actual_value_distances = np.linalg.norm((standardized_features - target_features_standardized) * weights, axis=1)
-
 combined = percentile_distances * percentile_weight + actual_value_distances * (1.0 - percentile_weight)
 
 # Normalize to similarity 0..100
@@ -308,7 +305,6 @@ similarity_df = df_candidates.copy()
 similarity_df['Similarity'] = similarities
 similarity_df = similarity_df[similarity_df['Player'] != target_player]
 
-# Simple user filters
 similarity_df = similarity_df[
     (similarity_df['Minutes played'].between(min_minutes, max_minutes, inclusive='both')) &
     (similarity_df['Age'].between(min_age, max_age, inclusive='both'))
@@ -338,7 +334,6 @@ similarity_df.insert(0, 'Rank', np.arange(1, len(similarity_df) + 1))
 # ---------------------------
 # UI Output
 # ---------------------------
-# Friendlier header
 st.subheader(f"{calc_mode} — Similar to: **{target_player}**")
 st.caption(f"Target league: **{target_league}** · Strength **{target_league_strength:.1f}** / 100")
 
@@ -359,7 +354,6 @@ if 'Adjusted Similarity' in top_view.columns:
     top_view["Adjusted Similarity"] = top_view["Adjusted Similarity"].round(2)
 
 def highlight_top3(row):
-    # Soft medal tones for top 3
     if row["Rank"] == 1: return ["background-color: #FFF7ED"] * len(row)  # soft orange
     if row["Rank"] == 2: return ["background-color: #F1F5F9"] * len(row)  # soft gray
     if row["Rank"] == 3: return ["background-color: #ECFEFF"] * len(row)  # soft cyan
@@ -380,8 +374,10 @@ styled = (
         "Age": "{:d}",
         "Rank": "{:d}",
     })
-    .background_gradient(axis=None, subset=["Adjusted Similarity"], cmap="Greens", vmin=0, vmax=100)
+    # matplotlib-free visual cue: inline bar in Adjusted Similarity
+    .bar(subset=["Adjusted Similarity"], color="#A7F3D0", vmin=0, vmax=100)
     .apply(highlight_top3, axis=1)
+    .hide(axis="index")
 )
 
 st.markdown("**Top results (polished view)**")
