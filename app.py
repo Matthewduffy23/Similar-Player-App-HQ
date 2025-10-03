@@ -30,11 +30,6 @@ section[data-testid="stSidebar"] {width: 320px !important;}
 st.title("⚽ Player Similarity Finder")
 
 # ====== Load data ======
-df = pd.read_csv("WORLDJUNE25.csv"
-
-
-
-# ====== Load data ======
 df = pd.read_csv("WORLDJUNE25.csv")
 
 # ---------------------------
