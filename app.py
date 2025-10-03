@@ -244,6 +244,7 @@ with st.sidebar:
     with st.expander("Feature weights (prefilled by role)"):
         wf = {}
         for f in features:
+            # Default to 1 if not explicitly set for the role
             wf[f] = st.slider(f"{f}", 1, 5, int(default_role_weights.get(f, 1)))
     top_n = st.number_input("Show top N", min_value=5, max_value=200, value=50, step=5)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -257,14 +258,14 @@ if missing:
     st.error(f"Your data is missing required columns: {missing}")
     st.stop()
 
-# Candidate pool
+# Candidate pool: by preset leagues + role + feature completeness
 df_candidates = df[df['League'].isin(leagues_selected) & group_mask(df['Position'], calc_mode)].copy()
 df_candidates = df_candidates.dropna(subset=features)
 if df_candidates.empty:
     st.warning("No candidates after filters/preset. Choose a different preset or relax filters.")
     st.stop()
 
-# Target row
+# Target row (from the full dataset but by role only)
 df_role_pool = df[group_mask(df['Position'], calc_mode)].copy()
 if target_player not in df_role_pool['Player'].values:
     st.warning("Target player not found for this role.")
@@ -274,8 +275,9 @@ target_league = str(target_row['League'])
 
 target_features = target_row[features].values.reshape(1, -1)
 
-# Percentiles within each league
+# Percentiles within each league (for candidate pool)
 percentile_ranks = df_candidates.groupby('League')[features].rank(pct=True).values
+# Target percentiles: compute over the whole dataset by league, then pick target
 target_percentiles = (
     df.groupby('League')[features]
       .rank(pct=True)
@@ -283,7 +285,7 @@ target_percentiles = (
       .values
 )
 
-# Feature weights
+# Feature weights vector
 weights = np.array([wf.get(f, 1) for f in features], dtype=float)
 
 # Standardize actual values over candidate pool
@@ -294,6 +296,7 @@ target_features_standardized = scaler.transform(target_features)
 # Distances
 percentile_distances = np.linalg.norm((percentile_ranks - target_percentiles) * weights, axis=1)
 actual_value_distances = np.linalg.norm((standardized_features - target_features_standardized) * weights, axis=1)
+
 combined = percentile_distances * percentile_weight + actual_value_distances * (1.0 - percentile_weight)
 
 # Normalize to similarity 0..100
@@ -305,6 +308,7 @@ similarity_df = df_candidates.copy()
 similarity_df['Similarity'] = similarities
 similarity_df = similarity_df[similarity_df['Player'] != target_player]
 
+# Simple user filters
 similarity_df = similarity_df[
     (similarity_df['Minutes played'].between(min_minutes, max_minutes, inclusive='both')) &
     (similarity_df['Age'].between(min_age, max_age, inclusive='both'))
@@ -334,83 +338,27 @@ similarity_df.insert(0, 'Rank', np.arange(1, len(similarity_df) + 1))
 # ---------------------------
 # UI Output
 # ---------------------------
-st.subheader(f"{calc_mode} — Similar to: **{target_player}**")
-st.caption(f"Target league: **{target_league}** · Strength **{target_league_strength:.1f}** / 100")
+st.subheader(f"{calc_mode} — Similar to: {target_player}  |  Target league: {target_league} (strength {target_league_strength:.1f})")
 
 cols_to_show = ['Rank','Player','Team','League','League strength','Age','Minutes played','Adjusted Similarity']
 cols_to_show = [c for c in cols_to_show if c in similarity_df.columns]
 
-# --- Polished "Top N" static table (styled) ---
-top_view = similarity_df[cols_to_show].head(int(top_n)).copy()
-
-# Pretty numbers
-if 'Minutes played' in top_view.columns:
-    top_view["Minutes played"] = top_view["Minutes played"].astype(int)
-if 'Age' in top_view.columns:
-    top_view["Age"] = top_view["Age"].astype(int)
-if 'League strength' in top_view.columns:
-    top_view["League strength"] = top_view["League strength"].round(1)
-if 'Adjusted Similarity' in top_view.columns:
-    top_view["Adjusted Similarity"] = top_view["Adjusted Similarity"].round(2)
-
-def highlight_top3(row):
-    if row["Rank"] == 1: return ["background-color: #FFF7ED"] * len(row)  # soft orange
-    if row["Rank"] == 2: return ["background-color: #F1F5F9"] * len(row)  # soft gray
-    if row["Rank"] == 3: return ["background-color: #ECFEFF"] * len(row)  # soft cyan
-    return [""] * len(row)
-
-styled = (
-    top_view.style
-    .set_table_styles([
-        {"selector": "thead th", "props": [("font-weight", "700"), ("background", "#F3F4F6")]},
-        {"selector": "tbody tr:nth-child(even)", "props": [("background", "#FAFAFA")]},
-        {"selector": "tbody tr:hover", "props": [("background", "#EEF2FF")]}
-    ])
-    .set_properties(subset=["Player"], **{"font-weight": "700"})  # Bold player names
-    .format({
-        "League strength": "{:.1f}",
-        "Adjusted Similarity": "{:.2f}",
-        "Minutes played": "{:,}",
-        "Age": "{:d}",
-        "Rank": "{:d}",
-    })
-    # matplotlib-free visual cue: inline bar in Adjusted Similarity
-    .bar(subset=["Adjusted Similarity"], color="#A7F3D0", vmin=0, vmax=100)
-    .apply(highlight_top3, axis=1)
-    .hide(axis="index")
-)
-
-st.markdown("**Top results (polished view)**")
-st.table(styled)
-
-# --- Scrollable full results with progress bars ---
-st.markdown("**Full results (scrollable)**")
+# League strength as 0–100 progress bar
 st.dataframe(
     similarity_df[cols_to_show].head(int(top_n)),
     use_container_width=True,
     column_config={
-        "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
-        "Player": st.column_config.TextColumn("Player", width="medium"),
-        "Team": st.column_config.TextColumn("Team", width="large"),
-        "League": st.column_config.TextColumn("League", width="large"),
         "League strength": st.column_config.ProgressColumn(
-            "League strength",
-            min_value=0, max_value=100, format="%.1f",
-            help="0–100 relative league quality",
-            width="small",
+            "League strength", min_value=0, max_value=100, format="%.1f",
+            help="0–100 relative league quality"
         ),
-        "Age": st.column_config.NumberColumn("Age", format="%d", width="small"),
-        "Minutes played": st.column_config.NumberColumn("Minutes played", format="%,d", width="medium"),
-        "Adjusted Similarity": st.column_config.ProgressColumn(
-            "Adjusted Similarity",
-            min_value=0, max_value=100, format="%.2f",
-            help="Similarity after league-strength adjustment (0–100).",
-            width="medium",
-        ),
+        "Adjusted Similarity": st.column_config.NumberColumn("Adjusted Similarity", format="%.2f"),
+        "Minutes played": st.column_config.NumberColumn("Minutes played", format="%d"),
+        "Age": st.column_config.NumberColumn("Age", format="%d"),
+        "Rank": st.column_config.NumberColumn("Rank", format="%d"),
     }
 )
 
-# CSV download (full)
 csv = similarity_df[cols_to_show].to_csv(index=False).encode('utf-8')
 st.download_button("⬇️ Download full results (CSV)", data=csv, file_name="similarity_results.csv", mime="text/csv")
 
@@ -428,5 +376,7 @@ with st.expander("Debug / Repro details"):
         "features_used": features,
         "weights_used": {f: int(wf.get(f, 1)) for f in features},
     })
+
+
 
 
