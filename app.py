@@ -1,3 +1,4 @@
+# app.py — Player Similarity Finder (simple player select + league presets, 0–100 league bar)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,35 +6,31 @@ from sklearn.preprocessing import StandardScaler
 
 st.set_page_config(page_title="Player Similarity Finder", layout="wide")
 
-# 🔒 Hide Streamlit chrome in the NORMAL view (no embed param required)
-st.markdown("""
-<style>
-/* Top toolbar (About/profile/share/fork) */
-header [data-testid="stToolbar"] { display: none !important; height: 0 !important; }
-
-/* Deploy/status buttons & ribbons */
-.stDeployButton, [data-testid="stStatusWidget"] { display: none !important; }
-
-/* Collapse the header bar space */
-[data-testid="stHeader"] { height: 0 !important; }
-
-/* Hide default menu and footer */
-#MainMenu, footer { visibility: hidden; height: 0 !important; }
-
-/* Optional: remove iframe badge if any host injects one */
-.viewerBadge_container__1QSob, .viewerBadge_link__1S137 { display:none !important; }
-</style>
-""", unsafe_allow_html=True)
-
 # ====== Styling ======
 st.markdown("""
 <style>
 .block-container {padding-top: 1.1rem; padding-bottom: 2rem;}
-/* ... your existing CSS ... */
+/* Big pill toggle */
+div.top-toggle {margin: .25rem 0 1rem 0;}
+div.top-toggle .stRadio > div {flex-direction: row; gap: .5rem; flex-wrap: wrap;}
+div.top-toggle label {padding: 10px 16px; border-radius: 999px; border:1px solid #E5E7EB;
+  background:#F8FAFC; font-weight:700;}
+div.top-toggle input:checked + div > label {background:#E5F0FF; border-color:#93C5FD; color:#1D4ED8;}
+/* Sidebar cards */
+section[data-testid="stSidebar"] {width: 320px !important;}
+.sidebar-card {background:#F8FAFC;border:1px solid #E5E7EB;border-radius:12px;padding:.85rem .9rem;margin-bottom:.8rem;}
+.sidebar-title {font-weight:700;font-size:0.95rem;margin-bottom:.6rem;display:flex;gap:.4rem;align-items:center;}
+/* Preset chips */
+.preset-chips .stRadio > div {flex-direction: row; gap: .5rem; flex-wrap: wrap;}
+.preset-chips label {padding:8px 10px;border-radius:999px;border:1px solid #E5E7EB;background:#fff;}
+.preset-chips input:checked + div > label {background:#111827;color:#fff;border-color:#111827;}
 </style>
 """, unsafe_allow_html=True)
 
 st.title("⚽ Player Similarity Finder")
+
+# ====== Load data ======
+df = pd.read_csv("WORLDJUNE25.csv"
 
 
 
