@@ -5,23 +5,25 @@ from sklearn.preprocessing import StandardScaler
 
 st.set_page_config(page_title="Player Similarity Finder", layout="wide")
 
-# 🔒 Hide chrome + the EMBEDDED VIEWER banner (only when you share ...?embed=true)
-is_embed = st.query_params.get("embed", ["false"])[0].lower() == "true"
-if is_embed:
-    st.markdown("""
-    <style>
-      /* toolbar/profile + status ribbon + footer */
-      header [data-testid="stToolbar"]{visibility:hidden;height:0}
-      [data-testid="stStatusWidget"]{display:none !important}
-      footer,#MainMenu{visibility:hidden}
+# 🔒 Hide Streamlit chrome in the NORMAL view (no embed param required)
+st.markdown("""
+<style>
+/* Top toolbar (About/profile/share/fork) */
+header [data-testid="stToolbar"] { display: none !important; height: 0 !important; }
 
-      /* remove the bottom "Built with Streamlit | Fullscreen" banner */
-      [data-testid="stEmbeddedViewerBadge"],
-      [data-testid="stEmbeddedViewer"]{display:none !important;}
-      .viewerBadge_container__1QSob,
-      .viewerBadge_link__1S137{display:none !important;}
-    </style>
-    """, unsafe_allow_html=True)
+/* Deploy/status buttons & ribbons */
+.stDeployButton, [data-testid="stStatusWidget"] { display: none !important; }
+
+/* Collapse the header bar space */
+[data-testid="stHeader"] { height: 0 !important; }
+
+/* Hide default menu and footer */
+#MainMenu, footer { visibility: hidden; height: 0 !important; }
+
+/* Optional: remove iframe badge if any host injects one */
+.viewerBadge_container__1QSob, .viewerBadge_link__1S137 { display:none !important; }
+</style>
+""", unsafe_allow_html=True)
 
 # ====== Styling ======
 st.markdown("""
@@ -32,6 +34,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚽ Player Similarity Finder")
+
 
 
 # ====== Load data ======
