@@ -338,27 +338,83 @@ similarity_df.insert(0, 'Rank', np.arange(1, len(similarity_df) + 1))
 # ---------------------------
 # UI Output
 # ---------------------------
-st.subheader(f"{calc_mode} — Similar to: {target_player}  |  Target league: {target_league} (strength {target_league_strength:.1f})")
+# Friendlier header
+st.subheader(f"{calc_mode} — Similar to: **{target_player}**")
+st.caption(f"Target league: **{target_league}** · Strength **{target_league_strength:.1f}** / 100")
 
 cols_to_show = ['Rank','Player','Team','League','League strength','Age','Minutes played','Adjusted Similarity']
 cols_to_show = [c for c in cols_to_show if c in similarity_df.columns]
 
-# League strength as 0–100 progress bar
+# --- Polished "Top N" static table (styled) ---
+top_view = similarity_df[cols_to_show].head(int(top_n)).copy()
+
+# Pretty numbers
+if 'Minutes played' in top_view.columns:
+    top_view["Minutes played"] = top_view["Minutes played"].astype(int)
+if 'Age' in top_view.columns:
+    top_view["Age"] = top_view["Age"].astype(int)
+if 'League strength' in top_view.columns:
+    top_view["League strength"] = top_view["League strength"].round(1)
+if 'Adjusted Similarity' in top_view.columns:
+    top_view["Adjusted Similarity"] = top_view["Adjusted Similarity"].round(2)
+
+def highlight_top3(row):
+    # Soft medal tones for top 3
+    if row["Rank"] == 1: return ["background-color: #FFF7ED"] * len(row)  # soft orange
+    if row["Rank"] == 2: return ["background-color: #F1F5F9"] * len(row)  # soft gray
+    if row["Rank"] == 3: return ["background-color: #ECFEFF"] * len(row)  # soft cyan
+    return [""] * len(row)
+
+styled = (
+    top_view.style
+    .set_table_styles([
+        {"selector": "thead th", "props": [("font-weight", "700"), ("background", "#F3F4F6")]},
+        {"selector": "tbody tr:nth-child(even)", "props": [("background", "#FAFAFA")]},
+        {"selector": "tbody tr:hover", "props": [("background", "#EEF2FF")]}
+    ])
+    .set_properties(subset=["Player"], **{"font-weight": "700"})  # Bold player names
+    .format({
+        "League strength": "{:.1f}",
+        "Adjusted Similarity": "{:.2f}",
+        "Minutes played": "{:,}",
+        "Age": "{:d}",
+        "Rank": "{:d}",
+    })
+    .background_gradient(axis=None, subset=["Adjusted Similarity"], cmap="Greens", vmin=0, vmax=100)
+    .apply(highlight_top3, axis=1)
+)
+
+st.markdown("**Top results (polished view)**")
+st.table(styled)
+
+# --- Scrollable full results with progress bars ---
+st.markdown("**Full results (scrollable)**")
 st.dataframe(
     similarity_df[cols_to_show].head(int(top_n)),
     use_container_width=True,
     column_config={
+        "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
+        "Player": st.column_config.TextColumn("Player", width="medium"),
+        "Team": st.column_config.TextColumn("Team", width="large"),
+        "League": st.column_config.TextColumn("League", width="large"),
         "League strength": st.column_config.ProgressColumn(
-            "League strength", min_value=0, max_value=100, format="%.1f",
-            help="0–100 relative league quality"
+            "League strength",
+            min_value=0, max_value=100, format="%.1f",
+            help="0–100 relative league quality",
+            width="small",
         ),
-        "Adjusted Similarity": st.column_config.NumberColumn("Adjusted Similarity", format="%.2f"),
-        "Minutes played": st.column_config.NumberColumn("Minutes played", format="%d"),
-        "Age": st.column_config.NumberColumn("Age", format="%d"),
-        "Rank": st.column_config.NumberColumn("Rank", format="%d"),
+        "Age": st.column_config.NumberColumn("Age", format="%d", width="small"),
+        "Minutes played": st.column_config.NumberColumn("Minutes played", format="%,d", width="medium"),
+        "Adjusted Similarity": st.column_config.ProgressColumn(
+            "Adjusted Similarity",
+            min_value=0, max_value=100, format="%.2f",
+            help="Similarity after league-strength adjustment (0–100).",
+            width="medium",
+        ),
     }
 )
 
+# CSV download (full)
 csv = similarity_df[cols_to_show].to_csv(index=False).encode('utf-8')
 st.download_button("⬇️ Download full results (CSV)", data=csv, file_name="similarity_results.csv", mime="text/csv")
 
