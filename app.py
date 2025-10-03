@@ -1,4 +1,3 @@
-# app.py — Player Similarity Finder (simple player select + league presets, 0–100 league bar)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,21 +5,29 @@ from sklearn.preprocessing import StandardScaler
 
 st.set_page_config(page_title="Player Similarity Finder", layout="wide")
 
+# 🔒 Hide chrome + the EMBEDDED VIEWER banner (only when you share ...?embed=true)
 is_embed = st.query_params.get("embed", ["false"])[0].lower() == "true"
 if is_embed:
     st.markdown("""
     <style>
+      /* toolbar/profile + status ribbon + footer */
       header [data-testid="stToolbar"]{visibility:hidden;height:0}
       [data-testid="stStatusWidget"]{display:none !important}
       footer,#MainMenu{visibility:hidden}
+
+      /* remove the bottom "Built with Streamlit | Fullscreen" banner */
+      [data-testid="stEmbeddedViewerBadge"],
+      [data-testid="stEmbeddedViewer"]{display:none !important;}
+      .viewerBadge_container__1QSob,
+      .viewerBadge_link__1S137{display:none !important;}
     </style>
     """, unsafe_allow_html=True)
 
-# your existing CSS block can stay as-is below
+# ====== Styling ======
 st.markdown("""
 <style>
 .block-container {padding-top: 1.1rem; padding-bottom: 2rem;}
-...
+/* ... your existing CSS ... */
 </style>
 """, unsafe_allow_html=True)
 
